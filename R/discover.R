@@ -93,3 +93,23 @@ discover_joins <- function(db, tau = 0.95, min_card = 2, alias_map = list()) {
     table_from = b$table_from, col_from = b$col_from,
     table_to = b$table_to, col_to = b$col_to)))
 }
+
+# Mirror of .dm_find_composite_key in the upstream PR. Finds a composite key
+# from the table's own data, used only when no single-column key is available.
+# Candidates must be id-named, not unique on their own (a column that is
+# already unique would be the key by itself), and free of missing values.
+# Combinations are tried smallest first, so the result is minimal.
+.find_composite_key <- function(dt, profile, max_cols = 3) {
+  cands <- Filter(function(p) !p$is_unique && p$n_distinct >= 2 &&
+                    .looks_like_id(p$col), profile)
+  cols <- vapply(cands, function(p) p$col, character(1))
+  cols <- cols[!vapply(cols, function(cn) anyNA(dt[[cn]]), logical(1))]
+  if (length(cols) < 2) return(NULL)
+
+  for (k in 2:min(max_cols, length(cols))) {
+    for (combo in utils::combn(cols, k, simplify = FALSE)) {
+      if (anyDuplicated(dt, by = combo) == 0) return(combo)
+    }
+  }
+  NULL
+}
